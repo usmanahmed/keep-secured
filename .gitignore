@@ -1,0 +1,11 @@
+# User data: notes, password hashes, sessions
+data/*
+!data/.htaccess
+
+# Credentials from older installs
+.htpasswd
+
+*.db
+*.sqlite
+*.log
+.DS_Store

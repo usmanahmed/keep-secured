@@ -1,0 +1,27 @@
+<FilesMatch "\.(db|sqlite|json|md|sql|htpasswd)$">
+    Require all denied
+</FilesMatch>
+
+# Include-only files
+<FilesMatch "^(auth|crypto)\.php$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Hidden files and folders, including .git on a git-based deploy
+    RewriteRule (^|/)\. - [F]
+
+    # Serve existing files/dirs directly
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^settings/?$ settings.php [L]
+
+    # Route vault slugs to index.php
+    RewriteRule ^([a-zA-Z0-9_-]+)/?$ index.php?vault=$1 [QSA,L]
+</IfModule>
