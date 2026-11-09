@@ -9,6 +9,7 @@ require_once __DIR__ . '/crypto.php';
 define('SYSTEM_CONFIG_FILE', DATA_DIR . '/system.json');
 define('RATE_LIMIT_FILE', DATA_DIR . '/ratelimit.json');
 define('SESSIONS_DIR', DATA_DIR . '/sessions');
+define('INSTALL_PROBE_FILE', DATA_DIR . '/install-check.txt');
 define('LEGACY_HTPASSWD_FILE', __DIR__ . '/.htpasswd');
 
 define('MASTER_IDLE_TIMEOUT', 43200); // 12 hours
@@ -40,43 +41,100 @@ function app_url(string $path): string {
     return app_base_path() . $path;
 }
 
-function install_problems(): array {
-    $problems = [];
-    if (PHP_VERSION_ID < 80100) {
-        $problems[] = 'PHP 8.1 or newer is required (found ' . PHP_VERSION . ').';
-    }
-    foreach (['openssl', 'pdo_sqlite', 'session'] as $extension) {
-        if (!extension_loaded($extension)) {
-            $problems[] = "The PHP extension \"{$extension}\" is not enabled.";
+// --- Install checks ---------------------------------------------------------
+
+function install_is_windows(): bool {
+    return PHP_OS_FAMILY === 'Windows';
+}
+
+// The account PHP runs as, for the permission commands on the install page.
+function install_web_user(): string {
+    if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
+        $user = posix_getpwuid(posix_geteuid());
+        if (is_array($user) && !empty($user['name'])) {
+            return $user['name'];
         }
     }
-    if (!is_dir(DATA_DIR) || !is_writable(DATA_DIR)) {
-        $problems[] = 'The data/ folder must exist and be writable by the web server.';
+    if (!install_is_windows()) {
+        return 'www-data';
     }
-    return $problems;
+    $name = (string)getenv('USERNAME');
+    if ($name === '') {
+        return '%USERNAME%';
+    }
+    // A service running as SYSTEM reports the machine account, COMPUTER$.
+    return substr($name, -1) === '$' ? 'SYSTEM' : $name;
+}
+
+function install_data_fix(): array {
+    $user = install_web_user();
+    $intro = "Keep Secured can't give itself write access to its data folder, so this one step is manual.";
+    if (install_is_windows()) {
+        $dir = str_replace('/', '\\', DATA_DIR);
+        $create = is_dir(DATA_DIR) ? '' : "mkdir \"{$dir}\"\n";
+        return [
+            'fix' => "{$intro} Open Command Prompt as administrator and run:",
+            'command' => "{$create}icacls \"{$dir}\" /grant \"{$user}:(OI)(CI)M\" /T",
+        ];
+    }
+    $dir = DATA_DIR;
+    $create = is_dir(DATA_DIR) ? '' : "sudo mkdir -p \"{$dir}\"\n";
+    return [
+        'fix' => "{$intro} Run this on the server:",
+        'command' => "{$create}sudo chown -R {$user} \"{$dir}\"\nsudo chmod 770 \"{$dir}\"",
+    ];
+}
+
+function install_extension_fix(string $extension): array {
+    if ($extension === 'pdo_sqlite' && !install_is_windows()) {
+        return [
+            'fix' => 'Install the PHP SQLite package, then restart the web server. On Debian or Ubuntu:',
+            'command' => 'sudo apt install php-sqlite3',
+        ];
+    }
+    $ini = php_ini_loaded_file();
+    $fix = $ini !== false
+        ? "In {$ini}, remove the ; before extension={$extension}, then restart the web server."
+        : "PHP has no php.ini file. In the PHP folder, copy php.ini-production to php.ini, remove the ; before extension={$extension}, then restart the web server.";
+    return ['fix' => $fix, 'command' => ''];
+}
+
+function install_checks(): array {
+    $checks = [[
+        'label' => 'PHP 8.1 or newer (found ' . PHP_VERSION . ')',
+        'ok' => PHP_VERSION_ID >= 80100,
+        'fix' => 'Install a newer version of PHP. With XAMPP, install the latest release.',
+        'command' => '',
+    ]];
+    foreach (['openssl', 'pdo_sqlite', 'session'] as $extension) {
+        $checks[] = ['label' => "PHP extension {$extension}", 'ok' => extension_loaded($extension)]
+            + install_extension_fix($extension);
+    }
+    $checks[] = ['label' => 'Writable data folder', 'ok' => is_dir(DATA_DIR) && is_writable(DATA_DIR)]
+        + install_data_fix();
+    return $checks;
 }
 
 function stop_if_install_incomplete(): void {
-    $problems = install_problems();
-    if ($problems === []) {
-        return;
+    $failed = array_filter(install_checks(), static fn(array $check): bool => !$check['ok']);
+    if ($failed !== []) {
+        render_install_blocked($failed);
     }
-    http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo "Keep Secured cannot start:\n\n- " . implode("\n- ", $problems) . "\n";
-    exit;
 }
 
-function start_request(): void {
-    stop_if_install_incomplete();
-
+function send_security_headers(): void {
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: no-referrer');
     header('Cache-Control: no-store');
     header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+}
 
+function start_request(): void {
+    send_security_headers();
     ensure_base_dirs();
+    stop_if_install_incomplete();
+
     if (!is_dir(SESSIONS_DIR)) {
         @mkdir(SESSIONS_DIR, 0700, true);
     }
@@ -206,7 +264,11 @@ function read_system_config(): array {
 
 function write_system_config(array $changes): bool {
     $config = array_merge(read_system_config(), $changes, ['updated_at' => date('c')]);
-    return atomic_write_json(SYSTEM_CONFIG_FILE, $config, 0600);
+    $saved = atomic_write_json(SYSTEM_CONFIG_FILE, $config, 0600);
+    if ($saved) {
+        @unlink(INSTALL_PROBE_FILE); // only needed until the install page is finished
+    }
+    return $saved;
 }
 
 function master_save(bool $enabled, string $hash): bool {
@@ -426,28 +488,138 @@ function render_page_head(string $title): void {
 <?php
 }
 
+// Shown before sessions start, so it must not depend on them or on app.js.
+function render_install_blocked(array $failed): never {
+    http_response_code(500);
+    header('Content-Type: text/html; charset=utf-8');
+    // Paths and account names are for the installer, not visitors to a live site.
+    $showDetails = !is_file(SYSTEM_CONFIG_FILE);
+    ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install — Keep Secured</title>
+  <link rel="stylesheet" href="<?= htmlspecialchars(asset_url('style.css')) ?>">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card install-card">
+      <div class="auth-icon">🛠️</div>
+      <?php if ($showDetails): ?>
+        <h1 class="auth-title">Almost ready</h1>
+        <p class="auth-subtitle">Fix <?= count($failed) === 1 ? 'this item' : 'these items' ?>, then check again.</p>
+        <ul class="install-checks">
+          <?php foreach ($failed as $check): ?>
+            <li class="install-check is-fail">
+              <div class="install-check-body">
+                <strong><?= htmlspecialchars($check['label']) ?></strong>
+                <p class="install-fix"><?= htmlspecialchars($check['fix']) ?></p>
+                <?php if ($check['command'] !== ''): ?>
+                  <pre class="install-command"><?= htmlspecialchars($check['command']) ?></pre>
+                <?php endif; ?>
+              </div>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+        <a class="btn-primary install-again" href="">Check again</a>
+      <?php else: ?>
+        <h1 class="auth-title">Keep Secured can't start</h1>
+        <p class="auth-subtitle">The server setup needs attention from the site owner.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+</body>
+</html>
+<?php
+    exit;
+}
+
+// A stable random file in data/. The browser tries to download it to prove that
+// the web server really blocks that folder.
+function install_probe_token(): string {
+    $token = (string)@file_get_contents(INSTALL_PROBE_FILE);
+    if (preg_match('/^[a-f0-9]{32}$/', $token) !== 1) {
+        $token = bin2hex(random_bytes(16));
+        @file_put_contents(INSTALL_PROBE_FILE, $token);
+    }
+    return $token;
+}
+
+function install_exposure_fix(): string {
+    $server = strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? ''));
+    if (str_contains($server, 'apache')) {
+        return 'Apache is ignoring .htaccess. Set AllowOverride All for this folder in its configuration, confirm that data/.htaccess was copied, and restart Apache.';
+    }
+    if (str_contains($server, 'nginx')) {
+        return 'Add the deny rules from the nginx section of the README, then reload nginx.';
+    }
+    return 'This web server does not apply the rules in .htaccess. Use Apache or nginx instead.';
+}
+
 function render_first_run(): never {
-    render_page_head('Welcome — Keep Secured');
+    $isPrivate = is_https() || in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+    render_page_head('Install — Keep Secured');
     ?>
 <body>
   <div class="auth-container">
-    <div class="auth-card">
+    <div class="auth-card install-card">
       <div class="auth-icon">🔐</div>
-      <h1 class="auth-title">Set a master password</h1>
-      <p class="auth-subtitle">It protects this whole site. There is no username.</p>
-      <form id="masterEnableForm" class="auth-form">
-        <div class="auth-error" role="alert"></div>
-        <div class="auth-input-group">
-          <label for="firstRunPassword">Master Password</label>
-          <input type="password" id="firstRunPassword" name="password" class="auth-input" required autofocus autocomplete="new-password" placeholder="At least 8 characters">
-        </div>
-        <div class="auth-input-group">
-          <label for="firstRunConfirm">Confirm Password</label>
-          <input type="password" id="firstRunConfirm" name="confirm" class="auth-input" required autocomplete="new-password" placeholder="Re-enter password">
-        </div>
-        <button type="submit" class="btn-primary">Set password</button>
-      </form>
-      <button id="masterSkipBtn" type="button" class="btn-secondary first-run-skip">Continue without a password</button>
+      <h1 class="auth-title">Install Keep Secured</h1>
+      <p class="auth-subtitle">Your server is being checked. Then choose a master password.</p>
+
+      <ul class="install-checks" aria-live="polite">
+        <li class="install-check is-ok">
+          <div class="install-check-body">
+            <strong>Server requirements</strong>
+            <p class="install-detail">PHP <?= htmlspecialchars(PHP_VERSION) ?>, required extensions and a writable data folder</p>
+          </div>
+        </li>
+        <li class="install-check <?= $isPrivate ? 'is-ok' : 'is-warn' ?>">
+          <div class="install-check-body">
+            <strong><?= $isPrivate ? 'Secure connection' : 'No HTTPS' ?></strong>
+            <?php if (!$isPrivate): ?>
+              <p class="install-fix">Passwords will cross the network unencrypted. Set up HTTPS before relying on this site.</p>
+            <?php endif; ?>
+          </div>
+        </li>
+        <li id="installCheckData" class="install-check is-pending"
+            data-url="<?= htmlspecialchars(app_url('/data/install-check.txt')) ?>"
+            data-token="<?= htmlspecialchars(install_probe_token()) ?>">
+          <div class="install-check-body">
+            <strong>Notes folder blocked from the web</strong>
+            <p class="install-fix" hidden><?= htmlspecialchars(install_exposure_fix()) ?></p>
+          </div>
+        </li>
+        <li id="installCheckRewrite" class="install-check is-pending"
+            data-url="<?= htmlspecialchars(app_url('/settings')) ?>">
+          <div class="install-check-body">
+            <strong>Page links</strong>
+            <p class="install-fix" hidden>Vault and Settings links won't open yet. In Apache, enable mod_rewrite and AllowOverride All. In nginx, add the rules from the README.</p>
+          </div>
+        </li>
+      </ul>
+
+      <a id="installAgain" class="btn-primary install-again" href="" hidden>Check again</a>
+
+      <div id="installSetup">
+        <h2 class="install-heading">Set a master password</h2>
+        <p class="auth-subtitle">It protects this whole site. There is no username.</p>
+        <form id="masterEnableForm" class="auth-form">
+          <div class="auth-error" role="alert"></div>
+          <div class="auth-input-group">
+            <label for="firstRunPassword">Master Password</label>
+            <input type="password" id="firstRunPassword" name="password" class="auth-input" required autofocus autocomplete="new-password" placeholder="At least 8 characters">
+          </div>
+          <div class="auth-input-group">
+            <label for="firstRunConfirm">Confirm Password</label>
+            <input type="password" id="firstRunConfirm" name="confirm" class="auth-input" required autocomplete="new-password" placeholder="Re-enter password">
+          </div>
+          <button type="submit" class="btn-primary">Finish installing</button>
+        </form>
+        <button id="masterSkipBtn" type="button" class="btn-secondary first-run-skip">Continue without a password</button>
+      </div>
     </div>
   </div>
 </body>

@@ -21,7 +21,7 @@ IIS and PHP's built-in server (`php -S`) are not supported. Both ignore `.htacce
 
 ## Install
 
-If something is missing, the site shows a plain message listing what to fix.
+There is nothing to configure by hand. Open the site in a browser and the install page checks your server, shows the exact fix for anything that is wrong, and has you choose a master password.
 
 ### Windows (XAMPP)
 
@@ -31,17 +31,7 @@ If something is missing, the site shows a plain message listing what to fix.
 
 3. Open the XAMPP Control Panel and start Apache.
 
-4. Go to `http://localhost/keep-secured/` straight away and set a master password. Until you make that choice, the first visitor can make it instead.
-
-5. Open `http://localhost/keep-secured/data/system.json` and confirm that it returns 403 or 404. If you can see the file's contents, do not store anything until `.htaccess` is working.
-
-If the site says `The data/ folder must exist and be writable`, open Command Prompt as administrator and give the account running Apache write access. If you started Apache from the XAMPP Control Panel, that is your own account:
-
-```bat
-icacls "C:\xampp\htdocs\keep-secured\data" /grant "%USERNAME%:(OI)(CI)M" /T
-```
-
-If Apache runs as a Windows service under a named account, use that account's name instead of `%USERNAME%`.
+4. Go to `http://localhost/keep-secured/` straight away and follow the install page. Until you finish it, the first visitor can make these choices instead.
 
 If you use plain Apache and PHP instead of XAMPP, enable `openssl` and `pdo_sqlite` in `php.ini`, and allow `.htaccess` as described under [Apache](#apache).
 
@@ -58,14 +48,9 @@ If you use plain Apache and PHP instead of XAMPP, enable `openssl` and `pdo_sqli
    git clone https://github.com/usmanahmed/keep-secured.git keep-secured
    ```
 
-2. Let the web server write to `data/`. The user is commonly `www-data` or `apache`:
+2. Open the site straight away and follow the install page. Until you finish it, the first visitor can make these choices instead.
 
-   ```sh
-   sudo chown -R www-data keep-secured/data
-   sudo chmod 770 keep-secured/data
-   ```
-
-3. Open the site straight away and set a master password. Until you make that choice, the first visitor can make it instead.
+A web server can't give itself write access to `data/`. If yours doesn't have it, the install page shows the one command to run, with your path and web server user filled in.
 
 ### Apache
 
@@ -104,7 +89,7 @@ After setup, confirm that `/data/system.json` returns 403 or 404.
 
 ### Forgotten passwords
 
-**Master password:** delete `data/system.json` on the server. The next visit shows the first-run screen, and no notes are affected.
+**Master password:** delete `data/system.json` on the server. The next visit shows the install page, and no notes are affected.
 
 **Vault password:** this cannot be recovered. The password is what decrypts the notes.
 

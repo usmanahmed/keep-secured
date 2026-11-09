@@ -684,6 +684,83 @@ body {
   color: var(--text-secondary);
 }
 
+/* Install page */
+.install-card {
+  max-width: 520px;
+}
+
+.install-checks {
+  list-style: none;
+  text-align: left;
+  margin-bottom: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.install-check {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.install-check + .install-check {
+  border-top: 1px solid var(--border-color);
+}
+
+.install-check::before {
+  flex: 0 0 18px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.install-check.is-ok::before { content: "✓"; color: #188038; }
+.install-check.is-fail::before { content: "✕"; color: var(--danger-color); }
+.install-check.is-warn::before { content: "!"; color: #b06000; }
+.install-check.is-pending::before { content: "…"; color: var(--text-secondary); }
+
+.install-check-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.install-check-body strong {
+  font-weight: 600;
+}
+
+.install-detail,
+.install-fix {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.install-command {
+  margin-top: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  user-select: all;
+}
+
+.install-heading {
+  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.install-again {
+  display: block;
+  text-decoration: none;
+}
+
+.install-again[hidden] {
+  display: none;
+}
+
 /* Settings */
 .settings-page {
   width: 100%;

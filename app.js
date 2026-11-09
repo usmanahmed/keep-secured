@@ -660,6 +660,43 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  function setInstallCheck(row, state, fixText = null) {
+    row.className = `install-check is-${state}`;
+    const fix = row.querySelector('.install-fix');
+    if (fixText !== null) fix.textContent = fixText;
+    fix.hidden = state === 'ok';
+  }
+
+  async function runDataCheck(row) {
+    try {
+      const res = await fetch(row.dataset.url, { cache: 'no-store' });
+      const isExposed = res.ok && (await res.text()).trim() === row.dataset.token;
+      setInstallCheck(row, isExposed ? 'fail' : 'ok');
+      if (isExposed) {
+        // Finishing now would put the password hash where anyone can download it.
+        document.getElementById('installSetup').hidden = true;
+        document.getElementById('installAgain').hidden = false;
+      }
+    } catch (err) {
+      setInstallCheck(row, 'warn', `Could not run this check. After installing, confirm that ${row.dataset.url} does not open.`);
+    }
+  }
+
+  async function runRewriteCheck(row) {
+    try {
+      const res = await fetch(row.dataset.url, { cache: 'no-store' });
+      setInstallCheck(row, res.ok ? 'ok' : 'warn');
+    } catch (err) {
+      setInstallCheck(row, 'warn');
+    }
+  }
+
+  const installCheckData = document.getElementById('installCheckData');
+  if (installCheckData) {
+    runDataCheck(installCheckData);
+    runRewriteCheck(document.getElementById('installCheckRewrite'));
+  }
+
   // Initialize
   if (document.getElementById('notesApp')) {
     fetchNotes();
