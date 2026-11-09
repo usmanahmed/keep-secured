@@ -30,7 +30,7 @@ render_page_head($slug === 'default' ? 'Keep Secured' : $slug . ' — Keep Secur
 <!-- Top Header Navigation Bar (Common across views) -->
 <header class="app-header">
   <div class="header-left">
-    <a href="<?= htmlspecialchars(app_url('/')) ?>" class="app-brand">
+    <a href="https://github.com/usmanahmed/keep-secured" class="app-brand">
       <span>📝</span>
       <span>Keep Secured</span>
     </a>

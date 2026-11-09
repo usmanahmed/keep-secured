@@ -16,7 +16,7 @@ render_page_head('Settings — Keep Secured');
 <body>
 
 <header class="app-header">
-  <a href="<?= htmlspecialchars(app_url('/')) ?>" class="app-brand">
+  <a href="https://github.com/usmanahmed/keep-secured" class="app-brand">
     <span>📝</span>
     <span>Keep Secured</span>
   </a>

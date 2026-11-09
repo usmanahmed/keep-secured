@@ -14,7 +14,7 @@ A lightweight, self-hosted web notepad with a tile layout. It maintains open and
   - On first access to a new slug, the user chooses:
     - **Ungated (Open)**: no password, stored in plaintext, listed in navigation.
     - **Gated (Encrypted)**: protected by a vault password, stored as AES-256-GCM ciphertext, auto-locks after 2 minutes of inactivity.
-  - `settings` is a reserved slug.
+  - `settings` and Windows device names (`con`, `prn`, `aux`, `nul`, `com1`-`com9`, `lpt1`-`lpt9`) are reserved slugs.
 - **Link Visibility**: only ungated vaults appear in navigation by default. The Settings toggle (`show_gated_links` in `data/system.json`) also lists gated vaults, exposing their names but not their notes.
 - **In-Place Vault Encryption**: an ungated vault can be converted to gated at any time.
 - **Subfolder installs**: `app_base_path()` derives the web path from `SCRIPT_NAME`. All links go through `app_url()`, and `app.js` reads the path from the `base-path` meta tag.

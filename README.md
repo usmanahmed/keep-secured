@@ -48,7 +48,6 @@ If you use plain Apache and PHP instead of XAMPP, enable `openssl` and `pdo_sqli
 #### Windows limits
 
 - **Shared computers:** Windows ignores the private file permissions the app sets on Linux. `data\` gets its permissions from its parent folder, so anyone with access to that folder can copy your files. Restrict it in the folder's **Properties > Security** tab.
-- **Vault names:** Windows reserves `con`, `prn`, `aux`, `nul`, `com1`-`com9` and `lpt1`-`lpt9`, so vaults with these names cannot be created.
 - **Using it from other devices:** set up HTTPS first. Without it, passwords cross your network unencrypted.
 
 ### Linux
@@ -124,3 +123,7 @@ Everything specific to your install is in `data/`. Back up that folder. To upgra
 ## Moving from HTTP Basic Auth
 
 If a `.htpasswd` file exists and no master password has been set, the app keeps the site locked and accepts any password from that file. The first one used becomes the master password, and `.htpasswd` can then be deleted. MD5 (`$apr1$`) and bcrypt entries are supported.
+
+## License
+
+[MIT](LICENSE)

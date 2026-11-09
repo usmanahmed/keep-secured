@@ -10,7 +10,13 @@ define('INACTIVITY_TIMEOUT', 120); // 2 minutes
 define('KDF_ITERATIONS', 600000);
 define('LEGACY_KDF_ITERATIONS', 100000); // vaults created before kdf_iterations was recorded
 define('MAX_SLUG_LENGTH', 64);
-define('RESERVED_VAULT_SLUGS', ['settings']);
+// Besides app routes, this covers Windows device names, which cannot be folder names.
+define('RESERVED_VAULT_SLUGS', [
+    'settings',
+    'con', 'prn', 'aux', 'nul',
+    'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+    'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+]);
 
 function ensure_base_dirs(): void {
     if (!is_dir(DATA_DIR)) {
